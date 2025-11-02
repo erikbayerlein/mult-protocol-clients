@@ -8,12 +8,7 @@ import (
 	"strings"
 )
 
-const (
-	host = "54.174.195.77"
-	port = 8080
-)
-
-func Request(message string) (string, error) {
+func Request(message string, host string, port int) (string, error) {
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 
 	conn, err := net.Dial("tcp", address)
