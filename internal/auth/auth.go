@@ -7,9 +7,9 @@ import (
 	"github.com/erikbayerlein/mult-protocol-clients/internal/tcp"
 )
 
-func Auth(alunoID int) (string, error) {
+func Auth(alunoID int, host string, port int) (string, error) {
 	authRequest := fmt.Sprintf("AUTH|aluno_id=%d|FIM", alunoID)
-	authResponse, err := tcp.Request(authRequest)
+	authResponse, err := tcp.Request(authRequest, host, port)
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +29,13 @@ func RequireLogin() (TokenRecord, error) {
 	return rec, nil
 }
 
-func LogoutRemote(token string) {
+func LogoutRemote(token string, host string, port int) error {
 	logoutRequest := fmt.Sprintf("LOGOUT|token=%s|FIM", token)
-	_, _ = tcp.Request(logoutRequest)
+
+	_, err := tcp.Request(logoutRequest, host, port)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
