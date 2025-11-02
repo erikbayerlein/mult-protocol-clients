@@ -13,20 +13,22 @@ import (
 	"syscall"
 
 	"github.com/erikbayerlein/mult-protocol-clients/internal/auth"
-	"github.com/erikbayerlein/mult-protocol-clients/internal/tcp"
+	sc "github.com/erikbayerlein/mult-protocol-clients/strings"
 )
 
 const usageText = `
 Commands:
   help                              Show this help
   clear                             Clear terminal screen
-  login <aluno_id>                  Authenticate user and save token
-  whoami                            Show current logged user
+  login <client> <student_id>       Authenticate user to server and save
+  whoami                            Show current logged user and client
   logout                            Logout and clear token
   string <operation> [args...]      Run operation with string client
+  json <operation> [args...]      	Run operation with json client (TODO)
+  protobuff <operation> [args...]   Run operation with protobuff client (TODO)
   exit / quit                       Exit program
 
-Operations (string client):
+Operations (client):
   echo <text>            Echo server - Ex.: "Hello World!"
   sum  <n1,n2,...>       Sum a list of numbers - Ex.: "340,558"
   timestamp              Info about the server's time
@@ -34,111 +36,57 @@ Operations (string client):
   history [limit]        History of operations (optional limit, default 10)
 `
 
-func doOperation(op, token string, params map[string]interface{}) (string, error) {
-	args := []string{"OP", "operacao=" + op, "token=" + token}
-	for key, value := range params {
-		switch v := value.(type) {
-		case []int:
-			nums := make([]string, len(v))
-			for i, n := range v {
-				nums[i] = fmt.Sprintf("%d", n)
-			}
-			args = append(args, fmt.Sprintf("%s=[%s]", key, strings.Join(nums, ",")))
-		default:
-			args = append(args, fmt.Sprintf("%s=%v", key, v))
-		}
-	}
-	args = append(args, "FIM")
+const (
+	host           = "54.174.195.77"
+	string_port    = 8080
+	json_port      = 8081
+	protobuff_port = 8082
+)
 
-	message := strings.Join(args, "|")
-	return tcp.Request(message)
-}
+var (
+	currentClient = ""
+
+	string_client = sc.StringClient{
+		Host: host,
+		Port: string_port,
+	}
+)
 
 func clearScreen() {
 	switch runtime.GOOS {
 	case "windows":
 		cmd := exec.Command("cmd", "/c", "cls")
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		_ = cmd.Run()
 	default:
 		cmd := exec.Command("clear")
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		_ = cmd.Run()
 	}
 }
 
 func gracefulShutdown() {
 	rec, err := auth.LoadToken()
 	if err == nil && rec.Token != "" {
-		auth.LogoutRemote(rec.Token)
+
+		switch currentClient {
+		case "string":
+			_ = string_client.Logout(rec.Token)
+
+		case "json":
+
+		case "protobuff":
+
+		}
+
 		_ = auth.ClearToken()
 		fmt.Println("Logged out")
 	}
 }
 
-// Command handlers
-
-func runStringClient(op string, args []string) error {
-	rec, err := auth.RequireLogin()
-	if err != nil {
-		return err
-	}
-	token := rec.Token
-
-	switch op {
-	case "echo":
-		if len(args) < 1 {
-			return fmt.Errorf("echo requires a message")
-		}
-		resp, err := doOperation("echo", token, map[string]interface{}{"mensagem": strings.Join(args, " ")})
-		fmt.Println("→", resp)
-		return err
-
-	case "sum":
-		if len(args) < 1 {
-			return fmt.Errorf("sum requires a comma-separated list")
-		}
-		parts := strings.Split(args[0], ",")
-		ints := make([]int, 0, len(parts))
-		for _, p := range parts {
-			n, _ := strconv.Atoi(strings.TrimSpace(p))
-			ints = append(ints, n)
-		}
-		resp, err := doOperation("soma", token, map[string]interface{}{"numeros": ints})
-		fmt.Println("→", resp)
-		return err
-
-	case "timestamp":
-		resp, err := doOperation("timestamp", token, map[string]interface{}{})
-		fmt.Println("→", resp)
-		return err
-
-	case "status":
-		resp, err := doOperation("status", token, map[string]interface{}{"detalhado": true})
-		fmt.Println("→", resp)
-		return err
-
-	case "history":
-		limit := 10
-		if len(args) >= 1 {
-			if v, convErr := strconv.Atoi(args[0]); convErr == nil {
-				limit = v
-			}
-		}
-		resp, err := doOperation("historico", token, map[string]interface{}{"limite": limit})
-		fmt.Println("→", resp)
-		return err
-
-	default:
-		return fmt.Errorf("unknown operation: %s", op)
-	}
-}
-
-// ===== Main interactive loop =====
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
 	go func() {
 		<-ctx.Done()
 		fmt.Println()
@@ -147,12 +95,17 @@ func main() {
 	}()
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("GoClient Interactive Shell")
+	fmt.Println("Go Multiprotocol Clients")
 	fmt.Println("(type 'help' for commands, 'exit' to quit)")
 	fmt.Print(usageText)
 
 	for {
-		fmt.Print("\n> ")
+		prompt := "> "
+		if currentClient != "" {
+			prompt = currentClient + " > "
+		}
+		fmt.Print("\n" + prompt)
+
 		line, _ := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -171,51 +124,87 @@ func main() {
 		case "help":
 			fmt.Print(usageText)
 
-		case "login":
-			if len(args) < 1 {
-				fmt.Println("Usage: login <student_id>")
-				continue
-			}
-			student_id, _ := strconv.Atoi(args[0])
-			token, err := auth.Auth(student_id)
-			if err != nil {
-				fmt.Println("Login failed:", err)
-				continue
-			}
-			auth.SaveToken(auth.TokenRecord{StudentId: student_id, Token: token})
-			fmt.Println("Logged in with aluno_id:", student_id)
-
-		case "whoami":
-			rec, err := auth.LoadToken()
-			if err != nil {
-				fmt.Println("Not logged in.")
-			} else {
-				fmt.Printf("Logged in as aluno_id=%d\n", rec.StudentId)
-			}
-
 		case "clear":
 			clearScreen()
 
-		case "logout":
-			rec, err := auth.LoadToken()
-			if err == nil && rec.Token != "" {
-				auth.LogoutRemote(rec.Token)
-			}
-			auth.ClearToken()
-			fmt.Println("Logged out.")
-
-		case "string":
-			if len(args) < 1 {
-				fmt.Println("Usage: string <operation> [args...]")
+		case "login":
+			if len(args) < 2 {
+				fmt.Println("Usage: login <client> <student_id>")
 				continue
 			}
-			op := args[0]
-			rest := args[1:]
-			if err := runStringClient(op, rest); err != nil {
-				fmt.Println("Error:", err)
+			clientArg := strings.ToLower(args[0])
+			studentID, err := strconv.Atoi(args[1])
+			if err != nil || studentID <= 0 {
+				fmt.Printf("Invalid student_id: %q\n", args[1])
+				continue
 			}
 
+			switch clientArg {
+			case "string":
+				if err := string_client.Login(studentID); err != nil {
+					fmt.Println("Login failed:", err)
+					continue
+				}
+				currentClient = clientArg
+				fmt.Printf("Logged in on %s server as student_id=%d\n", currentClient, studentID)
+
+			case "json":
+				fmt.Println("JSON client not implemented yet. (TODO)")
+			case "protobuff":
+				fmt.Println("ProtoBuff client not implemented yet. (TODO)")
+			default:
+				fmt.Printf("Invalid client: %s\nUse: string | json | protobuff\n", clientArg)
+			}
+
+		case "whoami":
+			rec, err := auth.LoadToken()
+			if err != nil || rec.Token == "" {
+				fmt.Println("Not logged in.")
+			} else if currentClient == "" {
+				fmt.Printf("Logged in as aluno_id=%d (no client selected in this session)\n", rec.StudentId)
+			} else {
+				fmt.Printf("Logged in as aluno_id=%d on client=%s\n", rec.StudentId, currentClient)
+			}
+
+		case "logout":
+			rec, err := auth.LoadToken()
+			if rec.Token == "" || err != nil {
+				fmt.Println("You're not logged.")
+				continue
+			}
+			switch currentClient {
+			case "string":
+				if err := string_client.Logout(rec.Token); err != nil {
+					fmt.Println("Logout error:", err)
+				}
+			case "json":
+				fmt.Println("Implement. TODO")
+			case "protobuff":
+				fmt.Println("Implement. TODO")
+			}
+			_ = auth.ClearToken()
+			currentClient = ""
+			fmt.Println("Logged out.")
+
 		default:
+			if currentClient != "" {
+				op := cmd
+				rest := args
+				switch currentClient {
+				case "string":
+					if err := string_client.Run(op, rest); err != nil {
+						fmt.Println("Error:", err)
+					}
+				case "json":
+					fmt.Println("JSON client not implemented yet. (TODO)")
+				case "protobuff":
+					fmt.Println("ProtoBuff client not implemented yet. (TODO)")
+				default:
+					fmt.Println("Unknown command:", cmd)
+				}
+				continue
+			}
+
 			fmt.Println("Unknown command:", cmd)
 		}
 	}
