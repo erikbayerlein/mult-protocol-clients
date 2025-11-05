@@ -39,7 +39,7 @@ func (sc *StringClient) Run(op string, args []string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("echo requires a message")
 		}
-		resp, err := sc.doOperation("echo", token, map[string]interface{}{"mensagem": strings.Join(args, " ")})
+		resp, err := sc.doOperation("echo", token, map[string]any{"mensagem": strings.Join(args, " ")})
 		fmt.Println("→", resp)
 		return err
 
@@ -53,17 +53,17 @@ func (sc *StringClient) Run(op string, args []string) error {
 			n, _ := strconv.Atoi(strings.TrimSpace(p))
 			ints = append(ints, n)
 		}
-		resp, err := sc.doOperation("soma", token, map[string]interface{}{"numeros": ints})
+		resp, err := sc.doOperation("soma", token, map[string]any{"nums": ints})
 		fmt.Println("→", resp)
 		return err
 
 	case "timestamp":
-		resp, err := sc.doOperation("timestamp", token, map[string]interface{}{})
+		resp, err := sc.doOperation("timestamp", token, map[string]any{})
 		fmt.Println("→", resp)
 		return err
 
 	case "status":
-		resp, err := sc.doOperation("status", token, map[string]interface{}{"detalhado": true})
+		resp, err := sc.doOperation("status", token, map[string]any{"detalhado": true})
 		fmt.Println("→", resp)
 		return err
 
@@ -74,7 +74,7 @@ func (sc *StringClient) Run(op string, args []string) error {
 				limit = v
 			}
 		}
-		resp, err := sc.doOperation("historico", token, map[string]interface{}{"limite": limit})
+		resp, err := sc.doOperation("historico", token, map[string]any{"limite": limit})
 		fmt.Println("→", resp)
 		return err
 
@@ -87,8 +87,8 @@ func (sc *StringClient) Logout(token string) error {
 	return auth.LogoutRemote(token, sc.Host, sc.Port)
 }
 
-func (sc *StringClient) doOperation(op, token string, params map[string]interface{}) (string, error) {
-	args := []string{"OP", "operacao=" + op, "token=" + token}
+func (sc *StringClient) doOperation(op, token string, params map[string]any) (string, error) {
+	args := []string{"OP", "token=" + token, "operacao=" + op}
 	for key, value := range params {
 		switch v := value.(type) {
 		case []int:
@@ -96,7 +96,7 @@ func (sc *StringClient) doOperation(op, token string, params map[string]interfac
 			for i, n := range v {
 				nums[i] = fmt.Sprintf("%d", n)
 			}
-			args = append(args, fmt.Sprintf("%s=[%s]", key, strings.Join(nums, ",")))
+			args = append(args, fmt.Sprintf("%s=%s", key, strings.Join(nums, ",")))
 		default:
 			args = append(args, fmt.Sprintf("%s=%v", key, v))
 		}
