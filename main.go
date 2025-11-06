@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/erikbayerlein/mult-protocol-clients/internal/auth"
+	jc "github.com/erikbayerlein/mult-protocol-clients/json"
 	sc "github.com/erikbayerlein/mult-protocol-clients/strings"
 )
 
@@ -37,7 +38,7 @@ Operations (client):
 `
 
 const (
-	host           = "54.174.195.77"
+	host           = "3.88.99.255"
 	string_port    = 8080
 	json_port      = 8081
 	protobuff_port = 8082
@@ -49,6 +50,11 @@ var (
 	string_client = sc.StringClient{
 		Host: host,
 		Port: string_port,
+	}
+
+	json_client = jc.JsonClient{
+		Host: host,
+		Port: json_port,
 	}
 )
 
@@ -74,6 +80,7 @@ func gracefulShutdown() {
 			_ = string_client.Logout(rec.Token)
 
 		case "json":
+			_ = json_client.Logout(rec.Token)
 
 		case "protobuff":
 
@@ -149,7 +156,13 @@ func main() {
 				fmt.Printf("Logged in on %s server as student_id=%d\n", currentClient, studentID)
 
 			case "json":
-				fmt.Println("JSON client not implemented yet. (TODO)")
+				if err := json_client.Login(studentID); err != nil {
+					fmt.Println("Login failed:", err)
+					continue
+				}
+				currentClient = clientArg
+				fmt.Printf("Logged in on %s server as student_id=%d\n", currentClient, studentID)
+
 			case "protobuff":
 				fmt.Println("ProtoBuff client not implemented yet. (TODO)")
 			default:
@@ -178,7 +191,10 @@ func main() {
 					fmt.Println("Logout error:", err)
 				}
 			case "json":
-				fmt.Println("Implement. TODO")
+				if err := json_client.Logout(rec.Token); err != nil {
+					fmt.Println("Logout error:", err)
+				}
+
 			case "protobuff":
 				fmt.Println("Implement. TODO")
 			}
@@ -195,8 +211,12 @@ func main() {
 					if err := string_client.Run(op, rest); err != nil {
 						fmt.Println("Error:", err)
 					}
+
 				case "json":
-					fmt.Println("JSON client not implemented yet. (TODO)")
+					if err := json_client.Run(op, rest); err != nil {
+						fmt.Println("Error:", err)
+					}
+
 				case "protobuff":
 					fmt.Println("ProtoBuff client not implemented yet. (TODO)")
 				default:
