@@ -15,6 +15,8 @@ type authJSONResp struct {
 var legacyTokenRe = regexp.MustCompile(`token=([^|]*)`)
 
 func Auth(req string, host string, port int) (string, error) {
+	fmt.Printf("Sending request: %s\n", req)
+
 	authResponse, err := tcp.Request(req, host, port)
 	if err != nil {
 		return "", err
@@ -36,6 +38,7 @@ func Auth(req string, host string, port int) (string, error) {
 
 func LogoutRemote(req string, host string, port int) error {
 	_, err := tcp.Request(req, host, port)
+	tcp.Close()
 	if err != nil {
 		return err
 	}
