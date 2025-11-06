@@ -1,7 +1,7 @@
 package tcp
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -22,12 +22,14 @@ func Request(message string, host string, port int) (string, error) {
 		return "", fmt.Errorf("send error: %v", err)
 	}
 
-	reader := bufio.NewReader(conn)
-	response, err := reader.ReadString('\n')
+	buff := make([]byte, 64*1024)
+	_, err = conn.Read(buff)
 	if err != nil && err.Error() != "EOF" {
 		return "", fmt.Errorf("read error: %v", err)
 	}
 
-	response = strings.TrimSpace(response)
+	trimmedData := bytes.TrimRight(buff, "\x00")
+
+	response := strings.TrimSpace(string(trimmedData))
 	return response, nil
 }
