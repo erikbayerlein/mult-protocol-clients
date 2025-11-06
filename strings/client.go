@@ -15,7 +15,8 @@ type StringClient struct {
 }
 
 func (sc *StringClient) Login(studentId int) error {
-	token, err := auth.Auth(studentId, sc.Host, sc.Port)
+	authRequest := fmt.Sprintf("AUTH|aluno_id=%d|FIM", studentId)
+	token, err := auth.Auth(authRequest, sc.Host, sc.Port)
 	if err != nil {
 		return err
 	}
@@ -84,7 +85,8 @@ func (sc *StringClient) Run(op string, args []string) error {
 }
 
 func (sc *StringClient) Logout(token string) error {
-	return auth.LogoutRemote(token, sc.Host, sc.Port)
+	req := fmt.Sprintf("LOGOUT|token=%s|FIM", token)
+	return auth.LogoutRemote(req, sc.Host, sc.Port)
 }
 
 func (sc *StringClient) doOperation(op, token string, params map[string]any) (string, error) {
