@@ -14,6 +14,7 @@ import (
 
 	"github.com/erikbayerlein/mult-protocol-clients/internal/auth"
 	jc "github.com/erikbayerlein/mult-protocol-clients/json"
+	pb "github.com/erikbayerlein/mult-protocol-clients/proto"
 	sc "github.com/erikbayerlein/mult-protocol-clients/strings"
 )
 
@@ -25,8 +26,8 @@ Commands:
   whoami                            Show current logged user and client
   logout                            Logout and clear token
   string <operation> [args...]      Run operation with string client
-  json <operation> [args...]      	Run operation with json client (TODO)
-  protobuff <operation> [args...]   Run operation with protobuff client (TODO)
+  json <operation> [args...]      	Run operation with json client
+  proto <operation> [args...]       Run operation with protobuff client
   exit / quit                       Exit program
 
 Operations (client):
@@ -56,6 +57,11 @@ var (
 		Host: host,
 		Port: json_port,
 	}
+
+	protobuff_client = pb.ProtobufClient{
+		Host: host,
+		Port: protobuff_port,
+	}
 )
 
 func clearScreen() {
@@ -82,8 +88,8 @@ func gracefulShutdown() {
 		case "json":
 			_ = json_client.Logout(rec.Token)
 
-		case "protobuff":
-
+		case "proto":
+			_ = protobuff_client.Logout(rec.Token)
 		}
 
 		_ = auth.ClearToken()
@@ -163,8 +169,14 @@ func main() {
 				currentClient = clientArg
 				fmt.Printf("Logged in on %s server as student_id=%d\n", currentClient, studentID)
 
-			case "protobuff":
-				fmt.Println("ProtoBuff client not implemented yet. (TODO)")
+			case "proto":
+				if err := protobuff_client.Login(studentID); err != nil {
+					fmt.Println("Login failed:", err)
+					continue
+				}
+				currentClient = clientArg
+				fmt.Printf("Logged in on %s server as student_id=%d\n", currentClient, studentID)
+
 			default:
 				fmt.Printf("Invalid client: %s\nUse: string | json | protobuff\n", clientArg)
 			}
@@ -194,9 +206,12 @@ func main() {
 				if err := json_client.Logout(rec.Token); err != nil {
 					fmt.Println("Logout error:", err)
 				}
-
-			case "protobuff":
-				fmt.Println("Implement. TODO")
+			case "proto":
+				if err := protobuff_client.Logout(rec.Token); err != nil {
+					fmt.Println("Logout error:", err)
+				}
+			default:
+				_ = protobuff_client.Logout(rec.Token)
 			}
 			_ = auth.ClearToken()
 			currentClient = ""
@@ -217,8 +232,11 @@ func main() {
 						fmt.Println("Error:", err)
 					}
 
-				case "protobuff":
-					fmt.Println("ProtoBuff client not implemented yet. (TODO)")
+				case "proto":
+					if err := protobuff_client.Run(op, rest); err != nil {
+						fmt.Println("Error:", err)
+					}
+
 				default:
 					fmt.Println("Unknown command:", cmd)
 				}
