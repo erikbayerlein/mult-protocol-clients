@@ -153,7 +153,7 @@ func (pc *ProtobufClient) doOperation(nomeOperacao, token string, params map[str
 	}
 
 	op := resp.GetOperacao()
-	if op == nil {
+	if op == nil && nomeOperacao != "logout" {
 		return "", fmt.Errorf("invalid response")
 	}
 
@@ -162,7 +162,7 @@ func (pc *ProtobufClient) doOperation(nomeOperacao, token string, params map[str
 
 func formatResultado(cmd string, op *pb.OperacaoResponse) string {
 	if op == nil {
-		return "ok { }"
+		return "ok"
 	}
 
 	var b strings.Builder
