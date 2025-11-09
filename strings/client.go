@@ -40,7 +40,7 @@ func (sc *StringClient) Run(op string, args []string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("echo requires a message")
 		}
-		resp, err := sc.doOperation("echo", token, map[string]any{"mensagem": strings.Join(args, " ")})
+		resp, err := sc.DoOperation("echo", token, map[string]any{"mensagem": strings.Join(args, " ")})
 		fmt.Println("→", resp)
 		return err
 
@@ -54,17 +54,17 @@ func (sc *StringClient) Run(op string, args []string) error {
 			n, _ := strconv.Atoi(strings.TrimSpace(p))
 			ints = append(ints, n)
 		}
-		resp, err := sc.doOperation("soma", token, map[string]any{"nums": ints})
+		resp, err := sc.DoOperation("soma", token, map[string]any{"nums": ints})
 		fmt.Println("→", resp)
 		return err
 
 	case "timestamp":
-		resp, err := sc.doOperation("timestamp", token, map[string]any{})
+		resp, err := sc.DoOperation("timestamp", token, map[string]any{})
 		fmt.Println("→", resp)
 		return err
 
 	case "status":
-		resp, err := sc.doOperation("status", token, map[string]any{"detalhado": true})
+		resp, err := sc.DoOperation("status", token, map[string]any{"detalhado": true})
 		fmt.Println("→", resp)
 		return err
 
@@ -75,7 +75,7 @@ func (sc *StringClient) Run(op string, args []string) error {
 				limit = v
 			}
 		}
-		resp, err := sc.doOperation("historico", token, map[string]any{"limite": limit})
+		resp, err := sc.DoOperation("historico", token, map[string]any{"limite": limit})
 		fmt.Println("→", resp)
 		return err
 
@@ -89,7 +89,7 @@ func (sc *StringClient) Logout(token string) error {
 	return auth.LogoutRemote(req, sc.Host, sc.Port)
 }
 
-func (sc *StringClient) doOperation(op, token string, params map[string]any) (string, error) {
+func (sc *StringClient) DoOperation(op, token string, params map[string]any) (string, error) {
 	args := []string{"OP", "token=" + token, "operacao=" + op}
 	for key, value := range params {
 		switch v := value.(type) {
