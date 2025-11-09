@@ -156,6 +156,8 @@ Each protocol client follows the same interface pattern:
 ### Interactive CLI
 
 ```bash
+make run
+# or
 ./multi-protocol-clients
 ```
 
@@ -218,9 +220,6 @@ Comprehensive performance testing and comparison of all three clients:
 #### Quick Start
 
 ```bash
-# Run CLI
-make run
-
 # Run with default settings (5 iterations per operation)
 make benchmark
 
