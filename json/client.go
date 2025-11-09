@@ -26,10 +26,7 @@ func (jc *JsonClient) Login(studentId int) error {
 		return fmt.Errorf("marshal auth request: %w", err)
 	}
 
-	req := string(payload)
-	fmt.Printf("Sending request: %s\n", req)
-
-	token, err := auth.Auth(req, jc.Host, jc.Port)
+	token, err := auth.Auth(string(payload), jc.Host, jc.Port)
 	if err != nil {
 		return err
 	}
