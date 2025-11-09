@@ -321,7 +321,7 @@ To use different servers, modify these values in `main.go` and rebuild.
 **Erik Bayerlein**
 
 - GitHub: [@erikbayerlein](https://github.com/erikbayerlein)
-- Project: Multi-Protocol Clients Benchmark System
+- Project: Multi-Protocol Clients
 
 ---
 
