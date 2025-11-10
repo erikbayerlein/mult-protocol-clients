@@ -144,7 +144,6 @@ benchmark/
 ├── benchmark.go           # Main benchmarking code
 ├── generate_charts.py     # Script to generate charts
 ├── run_benchmarks.sh      # Shell script to run benchmarks
-├── Makefile              # Makefile with useful targets
 └── README.md             # This file
 ```
 
