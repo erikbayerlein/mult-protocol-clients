@@ -22,6 +22,9 @@ def load_csv_results(csv_file):
                 'client': row['Client'],
                 'operation': row['Operation'],
                 'duration_ms': float(row['DurationMs']),
+                'mem_alloc_before': int(row['MemAllocBefore']) if 'MemAllocBefore' in row else 0,
+                'mem_alloc_after': int(row['MemAllocAfter']) if 'MemAllocAfter' in row else 0,
+                'mem_alloc_delta': int(row['MemAllocDelta']) if 'MemAllocDelta' in row else 0,
                 'success': row['Success'].lower() == 'true',
                 'error': row['Error']
             })
@@ -291,6 +294,198 @@ def generate_report(results, output_dir):
     
     print(f"✓ Saved: report.txt")
 
+def plot_memory_by_operation(results, output_dir):
+    """Create memory comparison charts for each operation across clients"""
+    aggregated = aggregate_by_client_operation(results)
+    
+    # Get unique operations
+    operations = set()
+    for client_data in aggregated.values():
+        operations.update(client_data.keys())
+    operations = sorted(operations)
+    
+    # Extract memory data
+    memory_aggregated = defaultdict(lambda: defaultdict(list))
+    for result in results:
+        client = result['client']
+        operation = result['operation']
+        memory_aggregated[client][operation].append(result['mem_alloc_delta'])
+    
+    clients = sorted(memory_aggregated.keys())
+    
+    # Create a figure for memory comparison
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig.suptitle('Memory Allocation by Operation (in KB)', fontsize=16, fontweight='bold')
+    axes = axes.flatten()
+    
+    for idx, operation in enumerate(operations):
+        if idx >= len(axes):
+            break
+        
+        ax = axes[idx]
+        client_memory = []
+        client_labels = []
+        
+        for client in clients:
+            if operation in memory_aggregated[client]:
+                memory_vals = memory_aggregated[client][operation]
+                if memory_vals:
+                    avg_memory_kb = np.mean(memory_vals) / 1024.0
+                    client_memory.append(avg_memory_kb)
+                    client_labels.append(client.upper())
+        
+        if client_memory:
+            colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
+            bars = ax.bar(client_labels, client_memory, color=colors[:len(client_labels)], alpha=0.8, edgecolor='black')
+            ax.set_ylabel('Memory (KB)', fontweight='bold')
+            ax.set_title(f'{operation.upper()}', fontweight='bold')
+            ax.grid(axis='y', alpha=0.3)
+            
+            # Add value labels on bars
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{height:.2f}KB',
+                       ha='center', va='bottom', fontsize=9)
+    
+    # Hide unused subplots
+    for idx in range(len(operations), len(axes)):
+        axes[idx].set_visible(False)
+    
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/memory_by_operation.png', dpi=300, bbox_inches='tight')
+    print(f"✓ Saved: memory_by_operation.png")
+    plt.close()
+
+def plot_memory_client_comparison(results, output_dir):
+    """Create memory comparison charts for each client across operations"""
+    # Extract memory data
+    memory_aggregated = defaultdict(lambda: defaultdict(list))
+    for result in results:
+        client = result['client']
+        operation = result['operation']
+        memory_aggregated[client][operation].append(result['mem_alloc_delta'])
+    
+    # Get unique operations
+    operations = set()
+    for client_data in memory_aggregated.values():
+        operations.update(client_data.keys())
+    operations = sorted(operations)
+    
+    clients = sorted(memory_aggregated.keys())
+    
+    # Create grouped bar chart for memory
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    x = np.arange(len(operations))
+    width = 0.25
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
+    
+    for idx, client in enumerate(clients):
+        memory_means = []
+        for operation in operations:
+            if operation in memory_aggregated[client]:
+                memory_vals = memory_aggregated[client][operation]
+                if memory_vals:
+                    avg_memory_kb = np.mean(memory_vals) / 1024.0
+                    memory_means.append(avg_memory_kb)
+                else:
+                    memory_means.append(0)
+            else:
+                memory_means.append(0)
+        
+        ax.bar(x + idx*width, memory_means, width, label=client.upper(), color=colors[idx], alpha=0.8, edgecolor='black')
+    
+    ax.set_xlabel('Operations', fontweight='bold', fontsize=12)
+    ax.set_ylabel('Memory Allocation (KB)', fontweight='bold', fontsize=12)
+    ax.set_title('Memory Allocation Comparison: All Operations Across Clients', fontsize=14, fontweight='bold')
+    ax.set_xticks(x + width)
+    ax.set_xticklabels([op.upper() for op in operations])
+    ax.legend(loc='upper left', fontsize=10)
+    ax.grid(axis='y', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/memory_client_comparison.png', dpi=300, bbox_inches='tight')
+    print(f"✓ Saved: memory_client_comparison.png")
+    plt.close()
+
+def plot_time_vs_memory(results, output_dir):
+    """Create scatter plot comparing execution time vs memory usage"""
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    colors_map = {'string': '#FF6B6B', 'json': '#4ECDC4', 'proto': '#45B7D1'}
+    
+    for client in sorted(set(r['client'] for r in results)):
+        client_results = [r for r in results if r['client'] == client]
+        
+        times = [r['duration_ms'] for r in client_results]
+        memories = [r['mem_alloc_delta'] / 1024.0 for r in client_results]
+        operations = [r['operation'] for r in client_results]
+        
+        ax.scatter(times, memories, label=client.upper(), s=100, alpha=0.6, 
+                  color=colors_map.get(client, '#999999'), edgecolor='black', linewidth=1.5)
+    
+    ax.set_xlabel('Execution Time (ms)', fontweight='bold', fontsize=12)
+    ax.set_ylabel('Memory Allocation (KB)', fontweight='bold', fontsize=12)
+    ax.set_title('Execution Time vs Memory Allocation', fontsize=14, fontweight='bold')
+    ax.legend(loc='upper left', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/time_vs_memory.png', dpi=300, bbox_inches='tight')
+    print(f"✓ Saved: time_vs_memory.png")
+    plt.close()
+
+def plot_memory_distribution(results, output_dir):
+    """Create box plots showing distribution of memory allocations"""
+    # Extract memory data
+    memory_aggregated = defaultdict(lambda: defaultdict(list))
+    for result in results:
+        client = result['client']
+        operation = result['operation']
+        memory_aggregated[client][operation].append(result['mem_alloc_delta'] / 1024.0)
+    
+    # Get unique operations
+    operations = set()
+    for client_data in memory_aggregated.values():
+        operations.update(client_data.keys())
+    operations = sorted(operations)
+    
+    clients = sorted(memory_aggregated.keys())
+    
+    fig, axes = plt.subplots(1, len(clients), figsize=(5*len(clients), 6), sharey=False)
+    if len(clients) == 1:
+        axes = [axes]
+    
+    fig.suptitle('Distribution of Memory Allocations by Operation', fontsize=14, fontweight='bold')
+    
+    for idx, client in enumerate(clients):
+        ax = axes[idx]
+        data = []
+        labels = []
+        
+        for operation in operations:
+            if operation in memory_aggregated[client]:
+                data.append(memory_aggregated[client][operation])
+                labels.append(operation.upper())
+        
+        if data:
+            bp = ax.boxplot(data, labels=labels, patch_artist=True)
+            
+            for patch in bp['boxes']:
+                patch.set_facecolor('#4ECDC4')
+                patch.set_alpha(0.7)
+            
+            ax.set_ylabel('Memory (KB)', fontweight='bold')
+            ax.set_title(f'{client.upper()} Client', fontweight='bold')
+            ax.grid(axis='y', alpha=0.3)
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+    
+    plt.tight_layout()
+    plt.savefig(f'{output_dir}/memory_distribution.png', dpi=300, bbox_inches='tight')
+    print(f"✓ Saved: memory_distribution.png")
+    plt.close()
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 generate_charts.py <benchmark_results_dir>")
@@ -312,6 +507,10 @@ def main():
     plot_client_comparison(results, results_dir)
     plot_distribution(results, results_dir)
     plot_success_rate(results, results_dir)
+    plot_memory_by_operation(results, results_dir)
+    plot_memory_client_comparison(results, results_dir)
+    plot_time_vs_memory(results, results_dir)
+    plot_memory_distribution(results, results_dir)
     generate_report(results, results_dir)
     
     print(f"\n✓ All charts saved to {results_dir}")

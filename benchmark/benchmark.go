@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +140,10 @@ func benchmarkClient(clientName string, client interface{}) []BenchmarkResult {
 				Iteration: i + 1,
 			}
 
+			runtime.GC()
+			memBefore := getMemoryStats()
+			result.MemAllocBefore = memBefore.Alloc
+
 			start := time.Now()
 			var err error
 
@@ -150,8 +157,14 @@ func benchmarkClient(clientName string, client interface{}) []BenchmarkResult {
 			}
 
 			duration := time.Since(start)
+			memAfter := getMemoryStats()
+			result.MemAllocAfter = memAfter.Alloc
 			result.Duration = duration
 			result.DurationMs = duration.Seconds() * 1000
+
+			if result.MemAllocAfter >= result.MemAllocBefore {
+				result.MemAllocDelta = result.MemAllocAfter - result.MemAllocBefore
+			}
 
 			if err != nil {
 				result.Success = false
@@ -179,6 +192,10 @@ func benchmarkClient(clientName string, client interface{}) []BenchmarkResult {
 			Iteration: i + 1,
 		}
 
+		runtime.GC()
+		memBefore := getMemoryStats()
+		result.MemAllocBefore = memBefore.Alloc
+
 		start := time.Now()
 		var err error
 
@@ -192,8 +209,14 @@ func benchmarkClient(clientName string, client interface{}) []BenchmarkResult {
 		}
 
 		duration := time.Since(start)
+		memAfter := getMemoryStats()
+		result.MemAllocAfter = memAfter.Alloc
 		result.Duration = duration
 		result.DurationMs = duration.Seconds() * 1000
+
+		if result.MemAllocAfter >= result.MemAllocBefore {
+			result.MemAllocDelta = result.MemAllocAfter - result.MemAllocBefore
+		}
 
 		if err != nil {
 			result.Success = false
@@ -237,6 +260,10 @@ func benchmarkAuth(clientName string, client interface{}) []BenchmarkResult {
 			Iteration: i + 1,
 		}
 
+		runtime.GC()
+		memBefore := getMemoryStats()
+		result.MemAllocBefore = memBefore.Alloc
+
 		start := time.Now()
 		var err error
 
@@ -250,8 +277,14 @@ func benchmarkAuth(clientName string, client interface{}) []BenchmarkResult {
 		}
 
 		duration := time.Since(start)
+		memAfter := getMemoryStats()
+		result.MemAllocAfter = memAfter.Alloc
 		result.Duration = duration
 		result.DurationMs = duration.Seconds() * 1000
+
+		if result.MemAllocAfter >= result.MemAllocBefore {
+			result.MemAllocDelta = result.MemAllocAfter - result.MemAllocBefore
+		}
 
 		if err != nil {
 			result.Success = false
@@ -350,7 +383,7 @@ func saveResultsToCSV(results []BenchmarkResult) error {
 	defer writer.Flush()
 
 	// Write header
-	header := []string{"Client", "Operation", "Iteration", "DurationMs", "Success", "Error"}
+	header := []string{"Client", "Operation", "Iteration", "DurationMs", "MemAllocBefore", "MemAllocAfter", "MemAllocDelta", "Success", "Error"}
 	if err := writer.Write(header); err != nil {
 		return err
 	}
@@ -362,6 +395,9 @@ func saveResultsToCSV(results []BenchmarkResult) error {
 			result.Operation,
 			strconv.Itoa(result.Iteration),
 			fmt.Sprintf("%.4f", result.DurationMs),
+			strconv.FormatUint(result.MemAllocBefore, 10),
+			strconv.FormatUint(result.MemAllocAfter, 10),
+			strconv.FormatUint(result.MemAllocDelta, 10),
 			strconv.FormatBool(result.Success),
 			result.Error,
 		}
@@ -400,6 +436,7 @@ func saveResultsToJSON(results []BenchmarkResult) error {
 
 func calculateStats(results []BenchmarkResult) []BenchmarkStats {
 	statsMap := make(map[string][]float64)
+	memAllocMap := make(map[string][]uint64)
 	successMap := make(map[string]int)
 	countMap := make(map[string]int)
 
@@ -407,6 +444,7 @@ func calculateStats(results []BenchmarkResult) []BenchmarkStats {
 	for _, result := range results {
 		key := result.Client + "_" + result.Operation
 		statsMap[key] = append(statsMap[key], result.DurationMs)
+		memAllocMap[key] = append(memAllocMap[key], result.MemAllocDelta)
 		countMap[key]++
 		if result.Success {
 			successMap[key]++
@@ -440,17 +478,16 @@ func calculateStats(results []BenchmarkResult) []BenchmarkStats {
 		}
 
 		avgVal := total / float64(len(durations))
+		stdDev := calculateStdDev(durations)
 
-		// Calculate standard deviation
-		sumSqDiff := 0.0
-		for _, d := range durations {
-			sumSqDiff += (d - avgVal) * (d - avgVal)
-		}
-		stdDev := 0.0
-		if len(durations) > 1 {
-			variance := sumSqDiff / float64(len(durations)-1)
-			// Simplified: use rough approximation
-			stdDev = variance * 0.5
+		// Calculate memory stats
+		memAllocAvg := uint64(0)
+		if memAllocVals, ok := memAllocMap[key]; ok && len(memAllocVals) > 0 {
+			totalMem := uint64(0)
+			for _, m := range memAllocVals {
+				totalMem += m
+			}
+			memAllocAvg = totalMem / uint64(len(memAllocVals))
 		}
 
 		successRate := float64(successMap[key]) / float64(countMap[key]) * 100
@@ -464,36 +501,72 @@ func calculateStats(results []BenchmarkResult) []BenchmarkStats {
 			MinTimeMs:   minVal,
 			MaxTimeMs:   maxVal,
 			StdDevMs:    stdDev,
+			MemAllocAvg: memAllocAvg,
 			SuccessRate: successRate,
 		})
 	}
+
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Client != stats[j].Client {
+			return stats[i].Client < stats[j].Client
+		}
+		return stats[i].Operation < stats[j].Operation
+	})
 
 	return stats
 }
 
 func printStats(stats []BenchmarkStats) {
-	fmt.Println("\n" + strings.Repeat("=", 100))
+	fmt.Println("\n" + strings.Repeat("=", 120))
 	fmt.Println("BENCHMARK STATISTICS")
-	fmt.Println(strings.Repeat("=", 100))
+	fmt.Println(strings.Repeat("=", 120))
 
 	currentClient := ""
 	for _, stat := range stats {
 		if stat.Client != currentClient {
 			currentClient = stat.Client
 			fmt.Printf("\n--- %s CLIENT ---\n", strings.ToUpper(stat.Client))
-			fmt.Printf("%-15s | %-10s | %-10s | %-10s | %-10s | %-10s\n",
-				"Operation", "Avg (ms)", "Min (ms)", "Max (ms)", "Success", "Count")
-			fmt.Println(strings.Repeat("-", 80))
+			fmt.Printf("%-15s | %-10s | %-10s | %-10s | %-10s | %-12s | %-10s\n",
+				"Operation", "Avg (ms)", "Min (ms)", "Max (ms)", "Success", "MemAlloc(B)", "Count")
+			fmt.Println(strings.Repeat("-", 100))
 		}
 
-		fmt.Printf("%-15s | %10.4f | %10.4f | %10.4f | %9.1f%% | %5d\n",
+		memAllocKB := float64(stat.MemAllocAvg) / 1024.0
+		fmt.Printf("%-15s | %10.4f | %10.4f | %10.4f | %9.1f%% | %12.2f KB | %5d\n",
 			stat.Operation,
 			stat.AvgTimeMs,
 			stat.MinTimeMs,
 			stat.MaxTimeMs,
 			stat.SuccessRate,
+			memAllocKB,
 			stat.Count)
 	}
 
-	fmt.Println("\n" + strings.Repeat("=", 100))
+	fmt.Println("\n" + strings.Repeat("=", 120))
+}
+
+func getMemoryStats() runtime.MemStats {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m
+}
+
+func calculateStdDev(values []float64) float64 {
+	if len(values) <= 1 {
+		return 0
+	}
+
+	mean := 0.0
+	for _, v := range values {
+		mean += v
+	}
+	mean /= float64(len(values))
+
+	sumSqDiff := 0.0
+	for _, v := range values {
+		sumSqDiff += (v - mean) * (v - mean)
+	}
+
+	variance := sumSqDiff / float64(len(values)-1)
+	return math.Sqrt(variance)
 }
